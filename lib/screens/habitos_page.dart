@@ -252,114 +252,109 @@ class _HabitosPageState extends State<HabitosPage> {
     final concluidoHoje = habito.foiConcluidoHoje();
 
     return Card(
-      margin: const EdgeInsets.only(
-        bottom: 12,
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) {
-                return HistoricoHabitoPage(
-                  habito: habito,
-                );
-              },
-            ),
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              GestureDetector(
-                onTap: () {
-                  _alternarHabito(habito);
-                },
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            // Botão independente para concluir/desmarcar o hábito.
+            IconButton(
+              tooltip: concluidoHoje
+                  ? 'Desmarcar hábito'
+                  : 'Concluir hábito',
+              onPressed: () => _alternarHabito(habito),
+              icon: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: concluidoHoje
+                      ? Colors.deepPurple
+                      : Colors.grey.shade100,
+                  shape: BoxShape.circle,
+                  border: Border.all(
                     color: concluidoHoje
                         ? Colors.deepPurple
-                        : Colors.grey.shade100,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: concluidoHoje
-                          ? Colors.deepPurple
-                          : Colors.grey.shade300,
-                    ),
+                        : Colors.grey.shade300,
                   ),
-                  child: concluidoHoje
-                      ? const Icon(
-                          Icons.check,
-                          color: Colors.white,
-                        )
-                      : Icon(
-                          Icons.local_fire_department_outlined,
-                          color: Colors.grey.shade600,
-                        ),
                 ),
-              ),
-
-              const SizedBox(width: 14),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      habito.titulo,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        decoration: concluidoHoje
-                            ? TextDecoration.lineThrough
-                            : null,
+                child: concluidoHoje
+                    ? const Icon(Icons.check, color: Colors.white)
+                    : Icon(
+                        Icons.local_fire_department_outlined,
+                        color: Colors.grey.shade600,
                       ),
+              ),
+            ),
+
+            const SizedBox(width: 14),
+
+            // O título abre o histórico, sem interferir no botão de concluir.
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          HistoricoHabitoPage(habito: habito),
                     ),
-
-                    const SizedBox(height: 6),
-
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.local_fire_department,
-                          size: 17,
-                          color: Colors.orange.shade700,
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        habito.titulo,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          decoration: concluidoHoje
+                              ? TextDecoration.lineThrough
+                              : null,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${habito.sequencia} dias',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.local_fire_department,
+                            size: 17,
+                            color: Colors.orange.shade700,
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 4),
+                          Text(
+                            '${habito.sequencia} dias',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
+            ),
 
-              PopupMenuButton<String>(
-                onSelected: (valor) {
-                  if (valor == 'excluir') {
-                    _excluirHabito(habito);
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'excluir',
-                    child: Text('Excluir'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            PopupMenuButton<String>(
+              onSelected: (valor) {
+                if (valor == 'excluir') {
+                  _excluirHabito(habito);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'excluir',
+                  child: Text('Excluir'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

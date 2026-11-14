@@ -6,8 +6,10 @@ class Habito {
   Habito({
     required this.id,
     required this.titulo,
-    this.diasConcluidos = const [],
-  });
+    List<String>? diasConcluidos,
+  }) : diasConcluidos = List<String>.from(
+          diasConcluidos ?? const <String>[],
+        );
 
   bool foiConcluidoHoje() {
     final hoje = DateTime.now();
@@ -44,15 +46,13 @@ class Habito {
       datas.first.day,
     );
 
-    final diferenca =
-        hojeSemHora.difference(ultimaData).inDays;
+    final diferenca = hojeSemHora.difference(ultimaData).inDays;
 
     if (diferenca > 1) {
       return 0;
     }
 
     int contador = 0;
-
     DateTime dataEsperada = ultimaData;
 
     for (final data in datas) {
@@ -64,7 +64,6 @@ class Habito {
 
       if (dataSemHora == dataEsperada) {
         contador++;
-
         dataEsperada = dataEsperada.subtract(
           const Duration(days: 1),
         );
