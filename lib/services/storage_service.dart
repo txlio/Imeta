@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +27,8 @@ class StorageService {
         'prazo': meta.prazo?.toIso8601String(),
         'valorMeta': meta.valorMeta,
         'valorAtual': meta.valorAtual,
+        'concluida': meta.concluida,
+        'xpRecebido': meta.xpRecebido,
       };
     }).toList();
 
@@ -47,6 +50,9 @@ class StorageService {
     final List<dynamic> lista = jsonDecode(dados);
 
     return lista.map((item) {
+      final valorMeta = (item['valorMeta'] as num).toDouble();
+      final valorAtual = (item['valorAtual'] as num).toDouble();
+
       return Meta(
         id: item['id'],
         titulo: item['titulo'],
@@ -54,8 +60,10 @@ class StorageService {
         prazo: item['prazo'] != null
             ? DateTime.parse(item['prazo'])
             : null,
-        valorMeta: (item['valorMeta'] as num).toDouble(),
-        valorAtual: (item['valorAtual'] as num).toDouble(),
+        valorMeta: valorMeta,
+        valorAtual: valorAtual,
+        concluida: item['concluida'] ?? false,
+        xpRecebido: item['xpRecebido'] ?? false,
       );
     }).toList();
   }
@@ -74,6 +82,11 @@ class StorageService {
         'descricao': tarefa.descricao,
         'concluida': tarefa.concluida,
         'prioridade': tarefa.prioridade,
+        'categoria': tarefa.categoria,
+
+        // Dados do lembrete
+        'dataLembrete': tarefa.dataLembrete?.toIso8601String(),
+        'notificacaoId': tarefa.notificacaoId,
       };
     }).toList();
 
@@ -101,6 +114,16 @@ class StorageService {
         descricao: item['descricao'] ?? '',
         concluida: item['concluida'] ?? false,
         prioridade: item['prioridade'] ?? 'Média',
+
+        // Categoria com compatibilidade para tarefas antigas
+        categoria: item['categoria'] ?? 'Pessoal',
+
+        // Recupera os dados do lembrete
+        dataLembrete: item['dataLembrete'] != null
+            ? DateTime.parse(item['dataLembrete'])
+            : null,
+
+        notificacaoId: (item['notificacaoId'] as num?)?.toInt(),
       );
     }).toList();
   }

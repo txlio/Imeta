@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 import '../models/meta.dart';
@@ -32,8 +33,8 @@ class _MetasPageState extends State<MetasPage> {
   DateTime? _dataSelecionada;
 
   bool _metaFinanceira = false;
-
   bool _carregando = true;
+  bool _salvando = false;
 
   @override
   void initState() {
@@ -47,7 +48,6 @@ class _MetasPageState extends State<MetasPage> {
     _descricaoController.dispose();
     _valorController.dispose();
     _valorAdicionarController.dispose();
-
     super.dispose();
   }
 
@@ -56,14 +56,24 @@ class _MetasPageState extends State<MetasPage> {
   // =========================
 
   Future<void> _carregarMetas() async {
-    final metasSalvas = await _storage.carregarMetas();
+    try {
+      final metasSalvas = await _storage.carregarMetas();
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      _metas = metasSalvas;
-      _carregando = false;
-    });
+      setState(() {
+        _metas = metasSalvas;
+        _carregando = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _carregando = false;
+      });
+
+      _mensagem('Erro ao carregar metas: $e');
+    }
   }
 
   // =========================
@@ -74,230 +84,236 @@ class _MetasPageState extends State<MetasPage> {
     await _storage.salvarMetas(_metas);
   }
 
+  void _mensagem(String texto) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(texto)),
+    );
+  }
+
+  // =========================
+  // FORMATAR E CONVERTER DINHEIRO
+  // =========================
+
+  double _converterValor(String texto) {
+    String valor = texto
+        .replaceAll('R\$', '')
+        .replaceAll(' ', '');
+
+    if (valor.contains(',')) {
+      valor = valor
+          .replaceAll('.', '')
+          .replaceAll(',', '.');
+    }
+
+    return double.tryParse(valor) ?? 0;
+  }
+
+  String _formatarValor(double valor) {
+    final partes = valor.toStringAsFixed(2).split('.');
+    final inteiro = partes[0];
+    final centavos = partes[1];
+
+    final buffer = StringBuffer();
+
+    for (int i = 0; i < inteiro.length; i++) {
+      buffer.write(inteiro[i]);
+
+      final restantes = inteiro.length - i - 1;
+
+      if (restantes > 0 && restantes % 3 == 0) {
+        buffer.write('.');
+      }
+    }
+
+    return 'R\$ ${buffer.toString()},$centavos';
+  }
+
   // =========================
   // SELECIONAR DATA
   // =========================
 
-  Future<void> _selecionarData() async {
+  Future<void> _selecionarData({
+    required StateSetter atualizarModal,
+  }) async {
     final DateTime? data = await showDatePicker(
       context: context,
+      locale: const Locale('pt', 'BR'),
       initialDate: _dataSelecionada ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime(2100),
+      helpText: 'Selecione o prazo',
+      cancelText: 'Cancelar',
+      confirmText: 'Confirmar',
     );
 
-    if (data != null) {
+    if (data != null && mounted) {
       setState(() {
         _dataSelecionada = data;
       });
+
+      atualizarModal(() {});
     }
   }
 
   // =========================
-  // SALVAR NOVA META
+  // ADICIONAR XP UMA ÚNICA VEZ
   // =========================
 
-  Future<void> _salvarMeta() async {
+  Future<void> _concederXp(Meta meta) async {
+    if (meta.xpRecebido) return;
+
+    // Marca antes de salvar para impedir duplicidade.
+    meta.xpRecebido = true;
+
+    try {
+      await _xpService.adicionarXp(XpService.xpMeta);
+      await _salvarMetas();
+    } catch (e) {
+      // Reverte o controle caso a operação falhe.
+      meta.xpRecebido = false;
+      rethrow;
+    }
+
+    if (mounted) {
+      _mensagem('Meta concluída! Você ganhou 50 XP!');
+    }
+  }
+
+  // =========================
+  // CONCLUIR META
+  // =========================
+
+  Future<void> _concluirMeta(Meta meta) async {
+    if (meta.concluida) return;
+
+    setState(() {
+      meta.concluida = true;
+    });
+
+    try {
+      await _concederXp(meta);
+      await _salvarMetas();
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        meta.concluida = false;
+      });
+
+      _mensagem('Não foi possível concluir a meta: $e');
+    }
+  }
+
+  // =========================
+  // REABRIR META
+  // =========================
+
+  Future<void> _reabrirMeta(Meta meta) async {
+    setState(() {
+      meta.concluida = false;
+    });
+
+    await _salvarMetas();
+
+    if (mounted) {
+      _mensagem('Meta reaberta. Você pode continuar!');
+      setState(() {});
+    }
+  }
+
+  // =========================
+  // CONCLUSÃO AUTOMÁTICA
+  // =========================
+
+  Future<void> _verificarConclusaoAutomatica(
+    Meta meta,
+  ) async {
+    if (meta.atingiuValor && !meta.concluida) {
+      await _concluirMeta(meta);
+    }
+  }
+
+  // =========================
+  // SALVAR OU EDITAR META
+  // =========================
+
+  Future<void> _salvarMeta({Meta? meta}) async {
+    if (_salvando) return;
+
     final titulo = _tituloController.text.trim();
 
     if (titulo.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Digite o nome da meta.',
-          ),
-        ),
-      );
-
+      _mensagem('Digite o nome da meta.');
       return;
     }
 
-    double valor = 0;
+    final valor = _metaFinanceira
+        ? _converterValor(_valorController.text)
+        : 0.0;
 
-    if (_metaFinanceira &&
-        _valorController.text.isNotEmpty) {
-      valor = double.tryParse(
-            _valorController.text.replaceAll(',', '.'),
-          ) ??
-          0;
+    if (_metaFinanceira && valor <= 0) {
+      _mensagem('Informe um valor válido para a meta.');
+      return;
     }
 
-    final novaMeta = Meta(
-      id: DateTime.now().millisecondsSinceEpoch,
-      titulo: titulo,
-      descricao: _descricaoController.text.trim(),
-      prazo: _dataSelecionada,
-      valorMeta: valor,
-      valorAtual: 0,
-    );
-
     setState(() {
-      _metas.add(novaMeta);
+      _salvando = true;
     });
 
-    await _salvarMetas();
+    try {
+      if (meta == null) {
+        final novaMeta = Meta(
+          id: DateTime.now().millisecondsSinceEpoch,
+          titulo: titulo,
+          descricao: _descricaoController.text.trim(),
+          prazo: _dataSelecionada,
+          valorMeta: valor,
+          valorAtual: 0,
+        );
 
-    _tituloController.clear();
-    _descricaoController.clear();
-    _valorController.clear();
+        _metas.add(novaMeta);
 
-    _dataSelecionada = null;
-    _metaFinanceira = false;
+        await _salvarMetas();
+      } else {
+        meta.titulo = titulo;
+        meta.descricao = _descricaoController.text.trim();
+        meta.prazo = _dataSelecionada;
+        meta.valorMeta = valor;
 
-    if (mounted) {
+        // Mantém o valor atual da meta durante a edição.
+        if (!_metaFinanceira) {
+          meta.valorAtual = 0;
+        }
+
+        await _salvarMetas();
+
+        await _verificarConclusaoAutomatica(meta);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _salvando = false;
+      });
+
       Navigator.pop(context);
-    }
-  }
-
-  // =========================
-  // ADICIONAR VALOR
-  // =========================
-
-  Future<void> _adicionarValor(Meta meta) async {
-    _valorAdicionarController.clear();
-
-    final valor = await showDialog<double>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text(
-            'Adicionar valor',
-          ),
-          content: TextField(
-            controller: _valorAdicionarController,
-            keyboardType:
-                const TextInputType.numberWithOptions(
-              decimal: true,
-            ),
-            decoration: const InputDecoration(
-              labelText: 'Valor',
-              prefixText: 'R\$ ',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final valor = double.tryParse(
-                  _valorAdicionarController.text
-                      .replaceAll(',', '.'),
-                );
-
-                if (valor == null || valor <= 0) {
-                  return;
-                }
-
-                Navigator.pop(context, valor);
-              },
-              child: const Text('Adicionar'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (valor == null || valor <= 0) {
-      return;
-    }
-
-    // Guarda o estado antes da alteração.
-    final estavaConcluida = meta.concluida;
-
-    setState(() {
-      meta.valorAtual += valor;
-
-      if (meta.valorAtual > meta.valorMeta &&
-          meta.valorMeta > 0) {
-        meta.valorAtual = meta.valorMeta;
-      }
-    });
-
-    await _salvarMetas();
-
-    // =========================
-    // META FOI CONCLUÍDA
-    // =========================
-
-    if (!estavaConcluida && meta.concluida) {
-      await _xpService.adicionarXp(
-        XpService.xpMeta,
+      _mensagem(
+        meta == null
+            ? 'Meta cadastrada com sucesso!'
+            : 'Meta atualizada com sucesso!',
       );
+    } catch (e) {
+      if (!mounted) return;
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              '🎯 Meta concluída! +50 XP',
-            ),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
+      setState(() {
+        _salvando = false;
+      });
 
-  // =========================
-  // EXCLUIR META
-  // =========================
-
-  Future<void> _excluirMeta(Meta meta) async {
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text(
-            'Excluir meta?',
-          ),
-          content: Text(
-            'Deseja realmente excluir "${meta.titulo}"?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
-              child: const Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
-              child: const Text(
-                'Excluir',
-                style: TextStyle(
-                  color: Colors.red,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmar != true) {
-      return;
-    }
-
-    final estavaConcluida = meta.concluida;
-
-    setState(() {
-      _metas.remove(meta);
-    });
-
-    await _salvarMetas();
-
-    // Se a meta concluída foi excluída,
-    // remove os 50 XP que ela concedeu.
-    if (estavaConcluida) {
-      await _xpService.removerXp(
-        XpService.xpMeta,
-      );
+      _mensagem('Erro ao salvar meta: $e');
     }
   }
 
@@ -305,13 +321,17 @@ class _MetasPageState extends State<MetasPage> {
   // ABRIR FORMULÁRIO
   // =========================
 
-  void _abrirFormulario() {
-    _tituloController.clear();
-    _descricaoController.clear();
-    _valorController.clear();
+  void _abrirFormulario({Meta? meta}) {
+    _tituloController.text = meta?.titulo ?? '';
+    _descricaoController.text = meta?.descricao ?? '';
 
-    _dataSelecionada = null;
-    _metaFinanceira = false;
+    _valorController.text = meta != null && meta.valorMeta > 0
+        ? meta.valorMeta.toStringAsFixed(2).replaceAll('.', ',')
+        : '';
+
+    _dataSelecionada = meta?.prazo;
+    _metaFinanceira = meta != null && meta.valorMeta > 0;
+    _salvando = false;
 
     showModalBottomSheet(
       context: context,
@@ -324,18 +344,15 @@ class _MetasPageState extends State<MetasPage> {
                 left: 20,
                 right: 20,
                 top: 20,
-                bottom:
-                    MediaQuery.of(context).viewInsets.bottom +
-                    20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
               ),
               child: SingleChildScrollView(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Nova Meta',
-                      style: TextStyle(
+                    Text(
+                      meta == null ? 'Nova Meta' : 'Editar Meta',
+                      style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
@@ -345,13 +362,10 @@ class _MetasPageState extends State<MetasPage> {
 
                     TextField(
                       controller: _tituloController,
-                      decoration:
-                          const InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Nome da meta',
-                        hintText:
-                            'Ex: Comprar um celular',
-                        border:
-                            OutlineInputBorder(),
+                        hintText: 'Ex: Comprar um celular',
+                        border: OutlineInputBorder(),
                       ),
                     ),
 
@@ -360,13 +374,10 @@ class _MetasPageState extends State<MetasPage> {
                     TextField(
                       controller: _descricaoController,
                       maxLines: 3,
-                      decoration:
-                          const InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Descrição',
-                        hintText:
-                            'Descreva sua meta...',
-                        border:
-                            OutlineInputBorder(),
+                        hintText: 'Descreva sua meta...',
+                        border: OutlineInputBorder(),
                       ),
                     ),
 
@@ -374,22 +385,22 @@ class _MetasPageState extends State<MetasPage> {
 
                     InkWell(
                       onTap: () async {
-                        await _selecionarData();
-                        setModalState(() {});
+                        await _selecionarData(
+                          atualizarModal: setModalState,
+                        );
                       },
                       child: InputDecorator(
-                        decoration:
-                            const InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'Prazo',
-                          border:
-                              OutlineInputBorder(),
+                          border: OutlineInputBorder(),
+                          suffixIcon: Icon(Icons.calendar_month),
                         ),
                         child: Text(
                           _dataSelecionada == null
                               ? 'Selecionar data'
                               : '${_dataSelecionada!.day.toString().padLeft(2, '0')}/'
-                                  '${_dataSelecionada!.month.toString().padLeft(2, '0')}/'
-                                  '${_dataSelecionada!.year}',
+                                '${_dataSelecionada!.month.toString().padLeft(2, '0')}/'
+                                '${_dataSelecionada!.year}',
                         ),
                       ),
                     ),
@@ -397,16 +408,12 @@ class _MetasPageState extends State<MetasPage> {
                     const SizedBox(height: 15),
 
                     SwitchListTile(
-                      contentPadding:
-                          EdgeInsets.zero,
-                      title: const Text(
-                        'Meta financeira?',
-                      ),
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Meta financeira?'),
                       value: _metaFinanceira,
                       onChanged: (valor) {
                         setModalState(() {
-                          _metaFinanceira =
-                              valor;
+                          _metaFinanceira = valor;
                         });
                       },
                     ),
@@ -415,21 +422,16 @@ class _MetasPageState extends State<MetasPage> {
                       const SizedBox(height: 10),
 
                       TextField(
-                        controller:
-                            _valorController,
+                        controller: _valorController,
                         keyboardType:
-                            const TextInputType
-                                .numberWithOptions(
+                            const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              'Valor da meta',
-                          hintText: '4000',
+                        decoration: const InputDecoration(
+                          labelText: 'Valor da meta',
+                          hintText: '1.500,00',
                           prefixText: 'R\$ ',
-                          border:
-                              OutlineInputBorder(),
+                          border: OutlineInputBorder(),
                         ),
                       ),
                     ],
@@ -440,13 +442,17 @@ class _MetasPageState extends State<MetasPage> {
                       width: double.infinity,
                       height: 55,
                       child: ElevatedButton(
-                        onPressed:
-                            _salvarMeta,
-                        child: const Text(
-                          'SALVAR META',
-                          style: TextStyle(
-                            fontWeight:
-                                FontWeight.bold,
+                        onPressed: _salvando
+                            ? null
+                            : () => _salvarMeta(meta: meta),
+                        child: Text(
+                          _salvando
+                              ? 'SALVANDO...'
+                              : meta == null
+                                  ? 'SALVAR META'
+                                  : 'ATUALIZAR META',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
@@ -462,11 +468,117 @@ class _MetasPageState extends State<MetasPage> {
   }
 
   // =========================
-  // FORMATAR VALOR
+  // ADICIONAR VALOR
   // =========================
 
-  String _formatarValor(double valor) {
-    return 'R\$ ${valor.toStringAsFixed(2).replaceAll('.', ',')}';
+  Future<void> _adicionarValor(Meta meta) async {
+    _valorAdicionarController.clear();
+
+    final valor = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Adicionar valor'),
+          content: TextField(
+            controller: _valorAdicionarController,
+            keyboardType:
+                const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'Valor',
+              prefixText: 'R\$ ',
+              hintText: '100,00',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final valor = _converterValor(
+                  _valorAdicionarController.text,
+                );
+
+                if (valor <= 0) return;
+
+                Navigator.pop(dialogContext, valor);
+              },
+              child: const Text('Adicionar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (valor == null || valor <= 0) return;
+
+    setState(() {
+      meta.valorAtual += valor;
+
+      if (meta.valorAtual > meta.valorMeta) {
+        meta.valorAtual = meta.valorMeta;
+      }
+    });
+
+    try {
+      await _verificarConclusaoAutomatica(meta);
+      await _salvarMetas();
+
+      if (mounted && !meta.concluida) {
+        _mensagem('Valor adicionado com sucesso!');
+      }
+    } catch (e) {
+      if (mounted) {
+        _mensagem('Erro ao atualizar valor: $e');
+      }
+    }
+  }
+
+  // =========================
+  // EXCLUIR META
+  // =========================
+
+  Future<void> _excluirMeta(Meta meta) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Excluir meta?'),
+          content: Text(
+            'Deseja realmente excluir "${meta.titulo}"?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text(
+                'Excluir',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar != true) return;
+
+    setState(() {
+      _metas.remove(meta);
+    });
+
+    await _salvarMetas();
+
+    if (mounted) {
+      _mensagem('Meta excluída. XP conquistado foi preservado.');
+    }
   }
 
   // =========================
@@ -492,21 +604,11 @@ class _MetasPageState extends State<MetasPage> {
       prazo.day,
     );
 
-    final dias = prazoSemHora
-        .difference(hojeSemHora)
-        .inDays;
+    final dias = prazoSemHora.difference(hojeSemHora).inDays;
 
-    if (dias < 0) {
-      return 'Prazo encerrado';
-    }
-
-    if (dias == 0) {
-      return 'Termina hoje';
-    }
-
-    if (dias == 1) {
-      return '1 dia restante';
-    }
+    if (dias < 0) return 'Prazo encerrado';
+    if (dias == 0) return 'Termina hoje';
+    if (dias == 1) return '1 dia restante';
 
     return '$dias dias restantes';
   }
@@ -521,88 +623,76 @@ class _MetasPageState extends State<MetasPage> {
       appBar: AppBar(
         title: const Text(
           'Minhas Metas',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
 
-      floatingActionButton:
-          FloatingActionButton(
-        onPressed: _abrirFormulario,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _abrirFormulario(),
         child: const Icon(Icons.add),
       ),
 
       body: _carregando
-          ? const Center(
-              child:
-                  CircularProgressIndicator(),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : _metas.isEmpty
               ? const Center(
-                  child: Text(
-                    'Nenhuma meta cadastrada.',
-                  ),
+                  child: Text('Nenhuma meta cadastrada.'),
                 )
               : ListView.builder(
-                  padding:
-                      const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(20),
                   itemCount: _metas.length,
-                  itemBuilder:
-                      (context, index) {
-                    final meta =
-                        _metas[index];
+                  itemBuilder: (context, index) {
+                    final meta = _metas[index];
 
                     return Card(
-                      margin:
-                          const EdgeInsets.only(
-                        bottom: 15,
-                      ),
+                      margin: const EdgeInsets.only(bottom: 15),
                       child: Padding(
-                        padding:
-                            const EdgeInsets.all(
-                          18,
-                        ),
+                        padding: const EdgeInsets.all(18),
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
                                 Expanded(
                                   child: Text(
                                     meta.titulo,
-                                    style:
-                                        const TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 19,
-                                      fontWeight:
-                                          FontWeight
-                                              .bold,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ),
 
-                                PopupMenuButton<
-                                    String>(
-                                  onSelected:
-                                      (valor) {
-                                    if (valor ==
-                                        'excluir') {
-                                      _excluirMeta(
-                                        meta,
-                                      );
+                                PopupMenuButton<String>(
+                                  onSelected: (valor) {
+                                    if (valor == 'editar') {
+                                      _abrirFormulario(meta: meta);
+                                    } else if (valor == 'excluir') {
+                                      _excluirMeta(meta);
                                     }
                                   },
-                                  itemBuilder:
-                                      (context) =>
-                                          [
+                                  itemBuilder: (context) => [
                                     const PopupMenuItem(
-                                      value:
-                                          'excluir',
-                                      child:
-                                          Text(
-                                        'Excluir',
+                                      value: 'editar',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.edit),
+                                          SizedBox(width: 8),
+                                          Text('Editar'),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'excluir',
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.delete,
+                                            color: Colors.red,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text('Excluir'),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -610,51 +700,37 @@ class _MetasPageState extends State<MetasPage> {
                               ],
                             ),
 
-                            if (meta
-                                .descricao
-                                .isNotEmpty) ...[
-                              const SizedBox(
-                                height: 5,
-                              ),
+                            if (meta.descricao.isNotEmpty) ...[
+                              const SizedBox(height: 5),
                               Text(
                                 meta.descricao,
                                 style: TextStyle(
-                                  color: Colors
-                                      .grey
-                                      .shade600,
+                                  color: Colors.grey.shade600,
                                 ),
                               ),
                             ],
 
-                            const SizedBox(
-                              height: 12,
-                            ),
+                            const SizedBox(height: 12),
 
                             LinearProgressIndicator(
-                              value:
-                                  meta.progresso,
+                              value: meta.progresso,
                               minHeight: 8,
                             ),
 
-                            const SizedBox(
-                              height: 8,
-                            ),
+                            const SizedBox(height: 8),
 
-                            if (meta.valorMeta >
-                                0)
+                            if (meta.valorMeta > 0)
                               Row(
                                 mainAxisAlignment:
-                                    MainAxisAlignment
-                                        .spaceBetween,
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(
-                                    '${_formatarValor(meta.valorAtual)} / '
-                                    '${_formatarValor(meta.valorMeta)}',
-                                    style:
-                                        const TextStyle(
-                                      fontWeight:
-                                          FontWeight
-                                              .bold,
+                                  Flexible(
+                                    child: Text(
+                                      '${_formatarValor(meta.valorAtual)} / '
+                                      '${_formatarValor(meta.valorMeta)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                   Text(
@@ -663,77 +739,71 @@ class _MetasPageState extends State<MetasPage> {
                                 ],
                               ),
 
-                            const SizedBox(
-                              height: 6,
-                            ),
+                            const SizedBox(height: 6),
 
                             Text(
-                              _formatarPrazo(
-                                meta.prazo,
-                              ),
+                              _formatarPrazo(meta.prazo),
                               style: TextStyle(
-                                color: Colors
-                                    .grey
-                                    .shade600,
+                                color: Colors.grey.shade600,
                               ),
                             ),
 
-                            if (meta.valorMeta >
-                                    0 &&
-                                !meta.concluida) ...[
-                              const SizedBox(
-                                height: 12,
-                              ),
-
-                              SizedBox(
-                                width:
-                                    double.infinity,
-                                child:
-                                    OutlinedButton
-                                        .icon(
-                                  onPressed: () {
-                                    _adicionarValor(
-                                      meta,
-                                    );
-                                  },
-                                  icon:
-                                      const Icon(
-                                    Icons.add,
-                                  ),
-                                  label:
-                                      const Text(
-                                    'Adicionar valor',
-                                  ),
-                                ),
-                              ),
-                            ],
+                            const SizedBox(height: 12),
 
                             if (meta.concluida) ...[
-                              const SizedBox(
-                                height: 12,
-                              ),
-
                               const Row(
                                 children: [
                                   Icon(
-                                    Icons
-                                        .check_circle,
-                                    color:
-                                        Colors.green,
+                                    Icons.check_circle,
+                                    color: Colors.green,
                                   ),
-                                  SizedBox(
-                                    width: 8,
-                                  ),
+                                  SizedBox(width: 8),
                                   Text(
-                                    'Meta concluída! 🎉',
-                                    style:
-                                        TextStyle(
-                                      fontWeight:
-                                          FontWeight
-                                              .bold,
+                                    'Meta concluída!',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
                                     ),
                                   ),
                                 ],
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              if (meta.xpRecebido)
+                                const Text(
+                                  '+50 XP já recebido',
+                                  style: TextStyle(
+                                    color: Colors.green,
+                                  ),
+                                ),
+
+                              OutlinedButton.icon(
+                                onPressed: () => _reabrirMeta(meta),
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Reabrir meta'),
+                              ),
+                            ] else ...[
+                              if (meta.valorMeta > 0)
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _adicionarValor(meta),
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Adicionar valor'),
+                                  ),
+                                ),
+
+                              const SizedBox(height: 8),
+
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: () => _concluirMeta(meta),
+                                  icon: const Icon(Icons.check),
+                                  label: const Text('Concluir meta'),
+                                ),
                               ),
                             ],
                           ],

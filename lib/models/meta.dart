@@ -1,3 +1,4 @@
+
 class Meta {
   int id;
   String titulo;
@@ -6,6 +7,10 @@ class Meta {
   double valorMeta;
   double valorAtual;
 
+  // Novos atributos
+  bool concluida;
+  bool xpRecebido;
+
   Meta({
     required this.id,
     required this.titulo,
@@ -13,6 +18,8 @@ class Meta {
     this.prazo,
     this.valorMeta = 0,
     this.valorAtual = 0,
+    this.concluida = false,
+    this.xpRecebido = false,
   });
 
   double get progresso {
@@ -23,7 +30,8 @@ class Meta {
     return (valorAtual / valorMeta).clamp(0.0, 1.0);
   }
 
-  bool get concluida {
+  // Verifica se a meta financeira atingiu o valor desejado
+  bool get atingiuValor {
     return valorMeta > 0 && valorAtual >= valorMeta;
   }
 }

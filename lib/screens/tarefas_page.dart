@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 import '../models/tarefa.dart';
@@ -23,7 +24,23 @@ class _TarefasPageState extends State<TarefasPage> {
   final TextEditingController _descricaoController =
       TextEditingController();
 
+  final TextEditingController _pesquisaController =
+      TextEditingController();
+
+  static const List<String> _categorias = [
+    'Trabalho',
+    'Estudos',
+    'Pessoal',
+    'Saúde',
+    'Outros',
+  ];
+
   String _prioridadeSelecionada = 'Média';
+  String _categoriaSelecionada = 'Pessoal';
+
+  String _filtroStatus = 'Todas';
+  String _filtroPrioridade = 'Todas';
+  String _filtroCategoria = 'Todas';
 
   bool _carregando = true;
 
@@ -37,8 +54,13 @@ class _TarefasPageState extends State<TarefasPage> {
   void dispose() {
     _tituloController.dispose();
     _descricaoController.dispose();
+    _pesquisaController.dispose();
     super.dispose();
   }
+
+  // =========================
+  // CARREGAMENTO E SALVAMENTO
+  // =========================
 
   Future<void> _carregarTarefas() async {
     final tarefasSalvas = await _storage.carregarTarefas();
@@ -55,7 +77,19 @@ class _TarefasPageState extends State<TarefasPage> {
     await _storage.salvarTarefas(_tarefas);
   }
 
-  Future<void> _salvarTarefa() async {
+  // =========================
+  // CADASTRAR E EDITAR TAREFAS
+  // =========================
+
+  void _limparFormulario() {
+    _tituloController.clear();
+    _descricaoController.clear();
+
+    _prioridadeSelecionada = 'Média';
+    _categoriaSelecionada = 'Pessoal';
+  }
+
+  Future<void> _salvarTarefa({Tarefa? tarefaExistente}) async {
     final titulo = _tituloController.text.trim();
 
     if (titulo.isEmpty) {
@@ -64,39 +98,210 @@ class _TarefasPageState extends State<TarefasPage> {
           content: Text('Digite o nome da tarefa.'),
         ),
       );
-
       return;
     }
 
-    final novaTarefa = Tarefa(
-      id: DateTime.now().millisecondsSinceEpoch,
-      titulo: titulo,
-      descricao: _descricaoController.text.trim(),
-      prioridade: _prioridadeSelecionada,
-    );
+    if (tarefaExistente != null) {
+      // Atualiza os dados sem perder o lembrete,
+      // o status de conclusão ou os pontos de XP.
+      tarefaExistente.titulo = titulo;
+      tarefaExistente.descricao =
+          _descricaoController.text.trim();
+      tarefaExistente.prioridade = _prioridadeSelecionada;
+      tarefaExistente.categoria = _categoriaSelecionada;
 
-    setState(() {
-      _tarefas.add(novaTarefa);
-    });
+      setState(() {});
+    } else {
+      final novaTarefa = Tarefa(
+        id: DateTime.now().millisecondsSinceEpoch,
+        titulo: titulo,
+        descricao: _descricaoController.text.trim(),
+        prioridade: _prioridadeSelecionada,
+        categoria: _categoriaSelecionada,
+      );
+
+      setState(() {
+        _tarefas.add(novaTarefa);
+      });
+    }
 
     await _salvarTarefas();
 
+    if (!mounted) return;
+
+    Navigator.pop(context);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          tarefaExistente != null
+              ? 'Tarefa atualizada com sucesso!'
+              : 'Tarefa cadastrada com sucesso!',
+        ),
+      ),
+    );
+  }
+
+  void _abrirFormulario({Tarefa? tarefa}) {
     _limparFormulario();
 
-    if (mounted) {
-      Navigator.pop(context);
+    if (tarefa != null) {
+      _tituloController.text = tarefa.titulo;
+      _descricaoController.text = tarefa.descricao;
+      _prioridadeSelecionada = tarefa.prioridade;
+
+      _categoriaSelecionada =
+          _categorias.contains(tarefa.categoria)
+              ? tarefa.categoria
+              : 'Outros';
     }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom:
+                    MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tarefa != null
+                          ? 'Editar Tarefa'
+                          : 'Nova Tarefa',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    TextField(
+                      controller: _tituloController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nome da tarefa',
+                        hintText: 'Ex: Estudar Flutter',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.task_alt),
+                      ),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    TextField(
+                      controller: _descricaoController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Descrição',
+                        hintText: 'Descreva a tarefa...',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.description_outlined),
+                      ),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    DropdownButtonFormField<String>(
+                      initialValue: _prioridadeSelecionada,
+                      decoration: const InputDecoration(
+                        labelText: 'Prioridade',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.flag_outlined),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Baixa',
+                          child: Text('Baixa'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Média',
+                          child: Text('Média'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Alta',
+                          child: Text('Alta'),
+                        ),
+                      ],
+                      onChanged: (valor) {
+                        if (valor == null) return;
+
+                        setModalState(() {
+                          _prioridadeSelecionada = valor;
+                        });
+                      },
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    DropdownButtonFormField<String>(
+                      initialValue: _categoriaSelecionada,
+                      decoration: const InputDecoration(
+                        labelText: 'Categoria',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.category_outlined),
+                      ),
+                      items: _categorias.map((categoria) {
+                        return DropdownMenuItem(
+                          value: categoria,
+                          child: Text(categoria),
+                        );
+                      }).toList(),
+                      onChanged: (valor) {
+                        if (valor == null) return;
+
+                        setModalState(() {
+                          _categoriaSelecionada = valor;
+                        });
+                      },
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          _salvarTarefa(
+                            tarefaExistente: tarefa,
+                          );
+                        },
+                        icon: const Icon(Icons.save),
+                        label: Text(
+                          tarefa != null
+                              ? 'SALVAR ALTERAÇÕES'
+                              : 'SALVAR TAREFA',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
-  void _limparFormulario() {
-    _tituloController.clear();
-    _descricaoController.clear();
-    _prioridadeSelecionada = 'Média';
-  }
+  // =========================
+  // CONCLUIR E REABRIR TAREFAS
+  // =========================
 
   Future<void> _alternarTarefa(Tarefa tarefa) async {
-    // Guarda o estado anterior para saber se estamos
-    // concluindo ou desfazendo a conclusão.
     final estavaConcluida = tarefa.concluida;
 
     setState(() {
@@ -105,7 +310,6 @@ class _TarefasPageState extends State<TarefasPage> {
 
     await _salvarTarefas();
 
-    // Tarefa pendente -> concluída
     if (!estavaConcluida) {
       await _xpService.adicionarXp(
         XpService.xpTarefa,
@@ -119,10 +323,7 @@ class _TarefasPageState extends State<TarefasPage> {
           ),
         );
       }
-    }
-
-    // Tarefa concluída -> pendente
-    else {
+    } else {
       await _xpService.removerXp(
         XpService.xpTarefa,
       );
@@ -137,6 +338,10 @@ class _TarefasPageState extends State<TarefasPage> {
       }
     }
   }
+
+  // =========================
+  // EXCLUIR TAREFAS
+  // =========================
 
   Future<void> _excluirTarefa(Tarefa tarefa) async {
     final confirmar = await showDialog<bool>(
@@ -170,9 +375,7 @@ class _TarefasPageState extends State<TarefasPage> {
       },
     );
 
-    if (confirmar != true) {
-      return;
-    }
+    if (confirmar != true) return;
 
     setState(() {
       _tarefas.remove(tarefa);
@@ -180,122 +383,67 @@ class _TarefasPageState extends State<TarefasPage> {
 
     await _salvarTarefas();
 
-    // Se a tarefa excluída estava concluída,
-    // retiramos os 10 XP que ela havia concedido.
     if (tarefa.concluida) {
       await _xpService.removerXp(
         XpService.xpTarefa,
       );
     }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tarefa excluída.'),
+        ),
+      );
+    }
   }
 
-  void _abrirFormulario() {
-    _limparFormulario();
+  // =========================
+  // FILTROS
+  // =========================
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom:
-                    MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Nova Tarefa',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+  List<Tarefa> get _tarefasFiltradas {
+    return _tarefas.where((tarefa) {
+      final pesquisa = _pesquisaController.text
+          .trim()
+          .toLowerCase();
 
-                    const SizedBox(height: 20),
+      final correspondePesquisa =
+          tarefa.titulo.toLowerCase().contains(pesquisa) ||
+          tarefa.descricao.toLowerCase().contains(pesquisa);
 
-                    TextField(
-                      controller: _tituloController,
-                      decoration: const InputDecoration(
-                        labelText: 'Nome da tarefa',
-                        hintText: 'Ex: Estudar Flutter',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
+      final correspondeStatus =
+          _filtroStatus == 'Todas' ||
+          (_filtroStatus == 'Pendentes' && !tarefa.concluida) ||
+          (_filtroStatus == 'Concluídas' && tarefa.concluida);
 
-                    const SizedBox(height: 15),
+      final correspondePrioridade =
+          _filtroPrioridade == 'Todas' ||
+          tarefa.prioridade == _filtroPrioridade;
 
-                    TextField(
-                      controller: _descricaoController,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: 'Descrição',
-                        hintText: 'Descreva a tarefa...',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
+      final correspondeCategoria =
+          _filtroCategoria == 'Todas' ||
+          tarefa.categoria == _filtroCategoria;
 
-                    const SizedBox(height: 15),
-
-                    DropdownButtonFormField<String>(
-                      initialValue: _prioridadeSelecionada,
-                      decoration: const InputDecoration(
-                        labelText: 'Prioridade',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Baixa',
-                          child: Text('Baixa'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Média',
-                          child: Text('Média'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Alta',
-                          child: Text('Alta'),
-                        ),
-                      ],
-                      onChanged: (valor) {
-                        if (valor == null) return;
-
-                        setModalState(() {
-                          _prioridadeSelecionada = valor;
-                        });
-                      },
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton(
-                        onPressed: _salvarTarefa,
-                        child: const Text(
-                          'SALVAR TAREFA',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
+      return correspondePesquisa &&
+          correspondeStatus &&
+          correspondePrioridade &&
+          correspondeCategoria;
+    }).toList();
   }
+
+  void _limparFiltros() {
+    setState(() {
+      _pesquisaController.clear();
+      _filtroStatus = 'Todas';
+      _filtroPrioridade = 'Todas';
+      _filtroCategoria = 'Todas';
+    });
+  }
+
+  // =========================
+  // CORES
+  // =========================
 
   Color _corPrioridade(String prioridade) {
     switch (prioridade) {
@@ -310,6 +458,29 @@ class _TarefasPageState extends State<TarefasPage> {
     }
   }
 
+  Color _corCategoria(String categoria) {
+    switch (categoria) {
+      case 'Trabalho':
+        return Colors.blue;
+
+      case 'Estudos':
+        return Colors.purple;
+
+      case 'Saúde':
+        return Colors.green;
+
+      case 'Pessoal':
+        return Colors.orange;
+
+      default:
+        return Colors.grey;
+    }
+  }
+
+  // =========================
+  // TELA
+  // =========================
+
   @override
   Widget build(BuildContext context) {
     final tarefasPendentes =
@@ -317,6 +488,8 @@ class _TarefasPageState extends State<TarefasPage> {
 
     final tarefasConcluidas =
         _tarefas.where((tarefa) => tarefa.concluida).length;
+
+    final tarefasVisiveis = _tarefasFiltradas;
 
     return Scaffold(
       appBar: AppBar(
@@ -329,7 +502,7 @@ class _TarefasPageState extends State<TarefasPage> {
       ),
 
       floatingActionButton: FloatingActionButton(
-        onPressed: _abrirFormulario,
+        onPressed: () => _abrirFormulario(),
         child: const Icon(Icons.add),
       ),
 
@@ -364,6 +537,7 @@ class _TarefasPageState extends State<TarefasPage> {
               : ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
+                    // CONTADORES
                     Row(
                       children: [
                         Expanded(
@@ -410,91 +584,325 @@ class _TarefasPageState extends State<TarefasPage> {
                       ],
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 20),
 
-                    ..._tarefas.map(
-                      (tarefa) {
-                        return Card(
-                          margin: const EdgeInsets.only(
-                            bottom: 12,
-                          ),
-                          child: ListTile(
-                            leading: Checkbox(
-                              value: tarefa.concluida,
-                              onChanged: (_) {
-                                _alternarTarefa(tarefa);
-                              },
-                            ),
+                    // PESQUISA
+                    TextField(
+                      controller: _pesquisaController,
+                      onChanged: (_) {
+                        setState(() {});
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Pesquisar tarefa...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _pesquisaController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: () {
+                                  setState(() {
+                                    _pesquisaController.clear();
+                                  });
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
 
-                            title: Text(
-                              tarefa.titulo,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                decoration: tarefa.concluida
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                              ),
-                            ),
+                    const SizedBox(height: 15),
 
-                            subtitle: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                if (tarefa.descricao.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(
-                                      top: 4,
-                                    ),
-                                    child: Text(
-                                      tarefa.descricao,
-                                    ),
-                                  ),
+                    // FILTRO DE STATUS
+                    DropdownButtonFormField<String>(
+                      initialValue: _filtroStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        prefixIcon: Icon(Icons.filter_list),
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Todas',
+                          child: Text('Todas as tarefas'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Pendentes',
+                          child: Text('Pendentes'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Concluídas',
+                          child: Text('Concluídas'),
+                        ),
+                      ],
+                      onChanged: (valor) {
+                        if (valor == null) return;
 
-                                const SizedBox(height: 6),
-
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: _corPrioridade(
-                                      tarefa.prioridade,
-                                    ).withValues(alpha: 0.12),
-                                    borderRadius:
-                                        BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    tarefa.prioridade,
-                                    style: TextStyle(
-                                      color: _corPrioridade(
-                                        tarefa.prioridade,
-                                      ),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            trailing: PopupMenuButton<String>(
-                              onSelected: (valor) {
-                                if (valor == 'excluir') {
-                                  _excluirTarefa(tarefa);
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'excluir',
-                                  child: Text('Excluir'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
+                        setState(() {
+                          _filtroStatus = valor;
+                        });
                       },
                     ),
+
+                    const SizedBox(height: 12),
+
+                    // FILTROS DE PRIORIDADE E CATEGORIA
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _filtroPrioridade,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Prioridade',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'Todas',
+                                child: Text('Todas'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Alta',
+                                child: Text('Alta'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Média',
+                                child: Text('Média'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Baixa',
+                                child: Text('Baixa'),
+                              ),
+                            ],
+                            onChanged: (valor) {
+                              if (valor == null) return;
+
+                              setState(() {
+                                _filtroPrioridade = valor;
+                              });
+                            },
+                          ),
+                        ),
+
+                        const SizedBox(width: 10),
+
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _filtroCategoria,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Categoria',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: [
+                              const DropdownMenuItem(
+                                value: 'Todas',
+                                child: Text('Todas'),
+                              ),
+                              ..._categorias.map((categoria) {
+                                return DropdownMenuItem(
+                                  value: categoria,
+                                  child: Text(categoria),
+                                );
+                              }),
+                            ],
+                            onChanged: (valor) {
+                              if (valor == null) return;
+
+                              setState(() {
+                                _filtroCategoria = valor;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _limparFiltros,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Limpar filtros'),
+                      ),
+                    ),
+
+                    const Divider(height: 25),
+
+                    // RESULTADO DOS FILTROS
+                    Text(
+                      '${tarefasVisiveis.length} tarefa(s) encontrada(s)',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    if (tarefasVisiveis.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(30),
+                        child: Center(
+                          child: Text(
+                            'Nenhuma tarefa encontrada com esses filtros.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+
+                    // LISTA DE TAREFAS
+                    ...tarefasVisiveis.map((tarefa) {
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+
+                          leading: Checkbox(
+                            value: tarefa.concluida,
+                            onChanged: (_) {
+                              _alternarTarefa(tarefa);
+                            },
+                          ),
+
+                          title: Text(
+                            tarefa.titulo,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              decoration: tarefa.concluida
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (tarefa.descricao.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(tarefa.descricao),
+                                ),
+
+                              const SizedBox(height: 8),
+
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  // PRIORIDADE
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _corPrioridade(
+                                        tarefa.prioridade,
+                                      ).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      tarefa.prioridade,
+                                      style: TextStyle(
+                                        color: _corPrioridade(
+                                          tarefa.prioridade,
+                                        ),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+
+                                  // CATEGORIA
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _corCategoria(
+                                        tarefa.categoria,
+                                      ).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      tarefa.categoria,
+                                      style: TextStyle(
+                                        color: _corCategoria(
+                                          tarefa.categoria,
+                                        ),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+
+                                  // LEMBRETE JÁ CADASTRADO
+                                  if (tarefa.dataLembrete != null)
+                                    const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.notifications_active_outlined,
+                                          size: 14,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Lembrete',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (valor) {
+                              if (valor == 'editar') {
+                                _abrirFormulario(tarefa: tarefa);
+                              }
+
+                              if (valor == 'excluir') {
+                                _excluirTarefa(tarefa);
+                              }
+                            },
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(
+                                value: 'editar',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit_outlined),
+                                    SizedBox(width: 8),
+                                    Text('Editar'),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'excluir',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.red,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text('Excluir'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
                   ],
                 ),
     );

@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 import '../models/habito.dart';
@@ -36,6 +37,16 @@ class _HabitosPageState extends State<HabitosPage> {
     return '${hoje.year}-'
         '${hoje.month.toString().padLeft(2, '0')}-'
         '${hoje.day.toString().padLeft(2, '0')}';
+  }
+
+  // =========================
+  // FORMATAR DATA
+  // =========================
+
+  String _dataFormatada(DateTime data) {
+    return '${data.year}-'
+        '${data.month.toString().padLeft(2, '0')}-'
+        '${data.day.toString().padLeft(2, '0')}';
   }
 
   // =========================
@@ -245,6 +256,110 @@ class _HabitosPageState extends State<HabitosPage> {
   }
 
   // =========================
+  // ACOMPANHAMENTO SEMANAL
+  // =========================
+
+  Widget _buildAcompanhamentoSemanal(Habito habito) {
+    final hoje = DateTime.now();
+
+    // Encontra a segunda-feira da semana atual.
+    final segunda = DateTime(
+      hoje.year,
+      hoje.month,
+      hoje.day,
+    ).subtract(Duration(days: hoje.weekday - 1));
+
+    const diasSemana = [
+      'SEG',
+      'TER',
+      'QUA',
+      'QUI',
+      'SEX',
+      'SÁB',
+      'DOM',
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Esta semana',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey.shade600,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        Row(
+          children: List.generate(7, (index) {
+            final data = segunda.add(Duration(days: index));
+
+            final concluido = habito.diasConcluidos.contains(
+              _dataFormatada(data),
+            );
+
+            final ehHoje = data.year == hoje.year &&
+                data.month == hoje.month &&
+                data.day == hoje.day;
+
+            return Expanded(
+              child: Column(
+                children: [
+                  Text(
+                    diasSemana[index],
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+
+                  const SizedBox(height: 5),
+
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: concluido
+                          ? Colors.deepPurple
+                          : Colors.grey.shade100,
+                      shape: BoxShape.circle,
+                      border: ehHoje
+                          ? Border.all(
+                              color: Colors.deepPurple,
+                              width: 2,
+                            )
+                          : null,
+                    ),
+                    child: Center(
+                      child: concluido
+                          ? const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 16,
+                            )
+                          : Text(
+                              '${data.day}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  // =========================
   // CARD DO HÁBITO
   // =========================
 
@@ -288,7 +403,7 @@ class _HabitosPageState extends State<HabitosPage> {
 
             const SizedBox(width: 14),
 
-            // O título abre o histórico, sem interferir no botão de concluir.
+            // O título abre o histórico.
             Expanded(
               child: InkWell(
                 borderRadius: BorderRadius.circular(8),
@@ -316,7 +431,9 @@ class _HabitosPageState extends State<HabitosPage> {
                               : null,
                         ),
                       ),
+
                       const SizedBox(height: 6),
+
                       Row(
                         children: [
                           Icon(
@@ -324,7 +441,9 @@ class _HabitosPageState extends State<HabitosPage> {
                             size: 17,
                             color: Colors.orange.shade700,
                           ),
+
                           const SizedBox(width: 4),
+
                           Text(
                             '${habito.sequencia} dias',
                             style: TextStyle(
@@ -335,6 +454,11 @@ class _HabitosPageState extends State<HabitosPage> {
                           ),
                         ],
                       ),
+
+                      const SizedBox(height: 12),
+
+                      // Nova visualização semanal.
+                      _buildAcompanhamentoSemanal(habito),
                     ],
                   ),
                 ),
@@ -501,7 +625,9 @@ class _HabitosPageState extends State<HabitosPage> {
                           size: 60,
                           color: Colors.grey.shade400,
                         ),
+
                         const SizedBox(height: 16),
+
                         const Text(
                           'Nenhum hábito cadastrado.',
                           style: TextStyle(
@@ -509,7 +635,9 @@ class _HabitosPageState extends State<HabitosPage> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+
                         const SizedBox(height: 8),
+
                         Text(
                           'Clique no + para criar seu primeiro hábito.',
                           textAlign: TextAlign.center,
