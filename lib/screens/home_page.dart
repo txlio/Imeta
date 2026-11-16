@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 import '../models/meta.dart';
@@ -43,6 +44,28 @@ class _HomePageState extends State<HomePage> {
     }
 
     return _tarefasConcluidas / _tarefas.length;
+  }
+
+  // =========================
+  // HÁBITOS
+  // =========================
+
+  int get _habitosConcluidosHoje {
+    return _habitos
+        .where((habito) => habito.foiConcluidoHoje())
+        .length;
+  }
+
+  int get _habitosPendentesHoje {
+    return _habitos.length - _habitosConcluidosHoje;
+  }
+
+  double get _percentualHabitosHoje {
+    if (_habitos.isEmpty) {
+      return 0;
+    }
+
+    return _habitosConcluidosHoje / _habitos.length;
   }
 
   // =========================
@@ -102,13 +125,399 @@ class _HomePageState extends State<HomePage> {
   }
 
   // =========================
+  // DATA FORMATADA
+  // =========================
+
+  String _dataFormatada(DateTime data) {
+    return '${data.year}-'
+        '${data.month.toString().padLeft(2, '0')}-'
+        '${data.day.toString().padLeft(2, '0')}';
+  }
+
+  // =========================
+  // DESEMPENHO SEMANAL
+  // =========================
+
+  Widget _buildDesempenhoSemanal() {
+    final hoje = DateTime.now();
+
+    final hojeSemHora = DateTime(
+      hoje.year,
+      hoje.month,
+      hoje.day,
+    );
+
+    final segunda = hojeSemHora.subtract(
+      Duration(days: hoje.weekday - 1),
+    );
+
+    const diasSemana = [
+      'SEG',
+      'TER',
+      'QUA',
+      'QUI',
+      'SEX',
+      'SÁB',
+      'DOM',
+    ];
+
+    final totalHabitos = _habitos.length;
+
+    final dadosSemana = List.generate(7, (index) {
+      final data = segunda.add(Duration(days: index));
+      final dataFormatada = _dataFormatada(data);
+
+      final concluidos = _habitos.where((habito) {
+        return habito.diasConcluidos.contains(dataFormatada);
+      }).length;
+
+      final percentual = totalHabitos == 0
+          ? 0.0
+          : concluidos / totalHabitos;
+
+      return {
+        'dia': diasSemana[index],
+        'data': data.day,
+        'concluidos': concluidos,
+        'percentual': percentual,
+        'ehHoje': data.year == hoje.year &&
+            data.month == hoje.month &&
+            data.day == hoje.day,
+        'ehFuturo': data.isAfter(hojeSemHora),
+      };
+    });
+
+    final totalConcluidosNaSemana = dadosSemana.fold<int>(
+      0,
+      (total, dia) => total + (dia['concluidos'] as int),
+    );
+
+    final diasComConclusao = dadosSemana.where((dia) {
+      return (dia['concluidos'] as int) > 0;
+    }).length;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.bar_chart,
+                color: Colors.deepPurple,
+                size: 25,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Desempenho semanal',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 6),
+
+          Text(
+            'Hábitos concluídos por dia',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 13,
+            ),
+          ),
+
+          const SizedBox(height: 22),
+
+          if (_habitos.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.calendar_month_outlined,
+                    size: 35,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Cadastre hábitos para acompanhar sua semana.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            SizedBox(
+              height: 130,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: List.generate(7, (index) {
+                  final dia = dadosSemana[index];
+
+                  final percentual =
+                      dia['percentual'] as double;
+
+                  final concluidos =
+                      dia['concluidos'] as int;
+
+                  final ehHoje = dia['ehHoje'] as bool;
+                  final ehFuturo = dia['ehFuturo'] as bool;
+
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 3,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            '$concluidos',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: ehFuturo
+                                  ? Colors.grey.shade400
+                                  : Colors.grey.shade700,
+                            ),
+                          ),
+
+                          const SizedBox(height: 6),
+
+                          Expanded(
+                            child: Container(
+                              width: double.infinity,
+                              alignment: Alignment.bottomCenter,
+                              child: FractionallySizedBox(
+                                heightFactor: percentual == 0
+                                    ? 0.04
+                                    : percentual,
+                                widthFactor: 0.65,
+                                alignment: Alignment.bottomCenter,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: ehFuturo
+                                        ? Colors.grey.shade200
+                                        : Colors.deepPurple,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          Text(
+                            dia['dia'] as String,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: ehHoje
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: ehHoje
+                                  ? Colors.deepPurple
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+
+                          const SizedBox(height: 4),
+
+                          Container(
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: ehHoje
+                                  ? Colors.deepPurple
+                                  : Colors.transparent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+
+          const SizedBox(height: 18),
+
+          const Divider(),
+
+          const SizedBox(height: 10),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$totalConcluidosNaSemana',
+                      style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'Conclusões na semana',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '$diasComConclusao de 7',
+                      style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'Dias com atividade',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================
+  // RESUMO DOS HÁBITOS DE HOJE
+  // =========================
+
+  Widget _buildResumoHabitosHoje() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.local_fire_department,
+                color: Colors.deepOrange,
+                size: 25,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Hábitos de hoje',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Text(
+                '$_habitosConcluidosHoje/${_habitos.length}',
+                style: const TextStyle(
+                  color: Colors.deepPurple,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: LinearProgressIndicator(
+              value: _percentualHabitosHoje,
+              minHeight: 9,
+              backgroundColor: Colors.grey.shade200,
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                Colors.deepPurple,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          Text(
+            _habitos.isEmpty
+                ? 'Cadastre seus hábitos para acompanhar seu progresso.'
+                : _habitosPendentesHoje == 0
+                    ? 'Todos os hábitos concluídos! Parabéns! 🎉'
+                    : '$_habitosPendentesHoje hábito(s) ainda pendente(s) hoje.',
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================
   // BUILD
   // =========================
 
   @override
   Widget build(BuildContext context) {
     if (_carregando) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
     }
 
     return Scaffold(
@@ -120,6 +529,7 @@ class _HomePageState extends State<HomePage> {
         centerTitle: false,
         backgroundColor: Colors.transparent,
       ),
+
       body: RefreshIndicator(
         onRefresh: _carregarDados,
         child: ListView(
@@ -131,14 +541,20 @@ class _HomePageState extends State<HomePage> {
 
             const Text(
               'Olá! 👋',
-              style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 30,
+                fontWeight: FontWeight.bold,
+              ),
             ),
 
             const SizedBox(height: 6),
 
             Text(
               'Vamos organizar seu dia?',
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey.shade600,
+              ),
             ),
 
             const SizedBox(height: 20),
@@ -146,6 +562,7 @@ class _HomePageState extends State<HomePage> {
             // =========================
             // AVISOS DO DIA
             // =========================
+
             _buildAvisosDoDia(),
 
             const SizedBox(height: 24),
@@ -153,11 +570,15 @@ class _HomePageState extends State<HomePage> {
             // =========================
             // CARD DO DIA
             // =========================
+
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF6A4BBC), Color(0xFF8E6CD8)],
+                  colors: [
+                    Color(0xFF6A4BBC),
+                    Color(0xFF8E6CD8),
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -168,7 +589,10 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   const Text(
                     'Seu dia',
-                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 15,
+                    ),
                   ),
 
                   const SizedBox(height: 8),
@@ -192,7 +616,8 @@ class _HomePageState extends State<HomePage> {
                       value: _percentualTarefas,
                       minHeight: 10,
                       backgroundColor: Colors.white24,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
+                      valueColor:
+                          const AlwaysStoppedAnimation<Color>(
                         Colors.white,
                       ),
                     ),
@@ -204,7 +629,10 @@ class _HomePageState extends State<HomePage> {
                     _tarefasPendentes == 0
                         ? 'Tudo concluído! 🎉'
                         : '$_tarefasPendentes tarefas pendentes',
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
                   ),
                 ],
               ),
@@ -215,6 +643,7 @@ class _HomePageState extends State<HomePage> {
             // =========================
             // CARD DE XP E NÍVEL
             // =========================
+
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -290,20 +719,43 @@ class _HomePageState extends State<HomePage> {
 
                   Text(
                     '${(_progressoNivel * 100).toStringAsFixed(0)}% para o próximo nível',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
             ),
+
+            const SizedBox(height: 20),
+
+            // =========================
+            // HÁBITOS DE HOJE
+            // =========================
+
+            _buildResumoHabitosHoje(),
+
+            const SizedBox(height: 20),
+
+            // =========================
+            // DESEMPENHO SEMANAL
+            // =========================
+
+            _buildDesempenhoSemanal(),
 
             const SizedBox(height: 24),
 
             // =========================
             // RESUMO
             // =========================
+
             const Text(
               'Resumo',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
 
             const SizedBox(height: 14),
@@ -363,10 +815,14 @@ class _HomePageState extends State<HomePage> {
             // =========================
             // TAREFAS PENDENTES
             // =========================
+
             if (_tarefasPendentes > 0) ...[
               const Text(
                 'Tarefas pendentes',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
 
               const SizedBox(height: 12),
@@ -379,12 +835,18 @@ class _HomePageState extends State<HomePage> {
                       elevation: 0,
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
-                        leading: const Icon(Icons.radio_button_unchecked),
+                        leading: const Icon(
+                          Icons.radio_button_unchecked,
+                        ),
                         title: Text(
                           tarefa.titulo,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                        subtitle: Text('Prioridade: ${tarefa.prioridade}'),
+                        subtitle: Text(
+                          'Prioridade: ${tarefa.prioridade}',
+                        ),
                       ),
                     ),
                   ),
@@ -393,12 +855,16 @@ class _HomePageState extends State<HomePage> {
             // =========================
             // METAS
             // =========================
+
             if (_metas.isNotEmpty) ...[
               const SizedBox(height: 16),
 
               const Text(
                 'Suas metas',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
 
               const SizedBox(height: 12),
@@ -413,7 +879,9 @@ class _HomePageState extends State<HomePage> {
                         leading: const Icon(Icons.flag_outlined),
                         title: Text(
                           meta.titulo,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                         subtitle: Text(
                           meta.valorMeta > 0
@@ -443,7 +911,8 @@ class _HomePageState extends State<HomePage> {
   // =========================
 
   Widget _buildAvisosDoDia() {
-    final metasEmAndamento = _metas.where((meta) => meta.progresso < 1).length;
+    final metasEmAndamento =
+        _metas.where((meta) => meta.progresso < 1).length;
 
     final avisos = <Widget>[];
 
@@ -483,13 +952,22 @@ class _HomePageState extends State<HomePage> {
       children: [
         const Text(
           'Avisos do dia',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
         ),
+
         const SizedBox(height: 12),
+
         ...avisos,
       ],
     );
   }
+
+  // =========================
+  // CARD DE AVISO
+  // =========================
 
   Widget _buildAviso({
     required IconData icone,
@@ -503,13 +981,17 @@ class _HomePageState extends State<HomePage> {
       decoration: BoxDecoration(
         color: cor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cor.withValues(alpha: 0.18)),
+        border: Border.all(
+          color: cor.withValues(alpha: 0.18),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icone, color: cor, size: 26),
+
           const SizedBox(width: 12),
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -521,10 +1003,15 @@ class _HomePageState extends State<HomePage> {
                     fontSize: 14,
                   ),
                 ),
+
                 const SizedBox(height: 4),
+
                 Text(
                   descricao,
-                  style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ),
@@ -560,25 +1047,38 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 28, color: Colors.deepPurple),
+          Icon(
+            icon,
+            size: 28,
+            color: Colors.deepPurple,
+          ),
 
           const SizedBox(height: 12),
 
           Text(
             titulo,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 14,
+            ),
           ),
 
           const SizedBox(height: 4),
 
           Text(
             valor,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
           ),
 
           Text(
             subtitulo,
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+            style: TextStyle(
+              color: Colors.grey.shade500,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
