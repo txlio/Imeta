@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/tarefa.dart';
 import '../services/storage_service.dart';
 import '../services/xp_service.dart';
+import '../services/conquista_service.dart';
 
 class TarefasPage extends StatefulWidget {
   const TarefasPage({super.key});
@@ -15,6 +16,7 @@ class TarefasPage extends StatefulWidget {
 class _TarefasPageState extends State<TarefasPage> {
   final StorageService _storage = StorageService();
   final XpService _xpService = XpService();
+  final ConquistaService _conquistaService = ConquistaService();
 
   List<Tarefa> _tarefas = [];
 
@@ -64,6 +66,13 @@ class _TarefasPageState extends State<TarefasPage> {
 
   Future<void> _carregarTarefas() async {
     final tarefasSalvas = await _storage.carregarTarefas();
+
+    await _conquistaService.inicializarHistoricoTarefas(
+      tarefasSalvas
+          .where((tarefa) => tarefa.concluida)
+          .map((tarefa) => tarefa.id)
+          .toList(),
+    );
 
     if (!mounted) return;
 
@@ -314,6 +323,10 @@ class _TarefasPageState extends State<TarefasPage> {
       await _xpService.adicionarXp(
         XpService.xpTarefa,
       );
+
+      // Conta esta tarefa apenas uma vez no histórico de conquistas.
+      // Reabrir e concluir novamente não duplica a contagem.
+      await _conquistaService.registrarTarefaConcluida(tarefa.id);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

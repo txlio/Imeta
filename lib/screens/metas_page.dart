@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/meta.dart';
+import '../services/conquista_service.dart';
 import '../services/storage_service.dart';
 import '../services/xp_service.dart';
 
@@ -15,6 +16,7 @@ class MetasPage extends StatefulWidget {
 class _MetasPageState extends State<MetasPage> {
   final StorageService _storage = StorageService();
   final XpService _xpService = XpService();
+  final ConquistaService _conquistaService = ConquistaService();
 
   List<Meta> _metas = [];
 
@@ -58,6 +60,11 @@ class _MetasPageState extends State<MetasPage> {
   Future<void> _carregarMetas() async {
     try {
       final metasSalvas = await _storage.carregarMetas();
+
+      // Reconhece metas concluídas antes da implantação da conquista.
+      if (metasSalvas.any((meta) => meta.concluida)) {
+        await _conquistaService.salvarDesbloqueada('meta_alcancada');
+      }
 
       if (!mounted) return;
 
@@ -193,6 +200,9 @@ class _MetasPageState extends State<MetasPage> {
     try {
       await _concederXp(meta);
       await _salvarMetas();
+
+      // A conquista é permanente, mesmo se a meta for reaberta ou excluída.
+      await _conquistaService.salvarDesbloqueada('meta_alcancada');
 
       if (mounted) {
         setState(() {});

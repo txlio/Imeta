@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/habito.dart';
 import '../services/storage_service.dart';
+import '../services/conquista_service.dart';
 import '../services/xp_service.dart';
 import 'historico_habito_page.dart';
 
@@ -16,6 +17,7 @@ class HabitosPage extends StatefulWidget {
 class _HabitosPageState extends State<HabitosPage> {
   final StorageService _storage = StorageService();
   final XpService _xpService = XpService();
+  final ConquistaService _conquistaService = ConquistaService();
 
   List<Habito> _habitos = [];
 
@@ -55,6 +57,16 @@ class _HabitosPageState extends State<HabitosPage> {
 
   Future<void> _carregarHabitos() async {
     final habitosSalvos = await _storage.carregarHabitos();
+
+    // Recupera conquistas de hábitos que já tinham histórico salvo.
+    for (final habito in habitosSalvos) {
+      if (habito.diasConcluidos.isNotEmpty) {
+        await _conquistaService.registrarHabitoConcluido(
+          habito.id,
+          habito.sequencia,
+        );
+      }
+    }
 
     if (!mounted) return;
 
@@ -153,6 +165,15 @@ class _HabitosPageState extends State<HabitosPage> {
     });
 
     await _salvarHabitos();
+
+    // Registra a conquista somente quando o hábito é concluído,
+    // nunca quando o usuário apenas desmarca o dia.
+    if (!jaConcluido) {
+      await _conquistaService.registrarHabitoConcluido(
+        habito.id,
+        habito.sequencia,
+      );
+    }
 
     // =========================
     // GANHAR XP

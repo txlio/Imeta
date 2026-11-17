@@ -7,6 +7,7 @@ import 'screens/metas_page.dart';
 import 'screens/tarefas_page.dart';
 import 'screens/habitos_page.dart';
 import 'screens/progresso_page.dart';
+import 'screens/conquistas_page.dart';
 
 import 'services/notification_service.dart';
 
@@ -75,6 +76,7 @@ class _MainScreenState extends State<MainScreen> {
     TarefasPage(),
     HabitosPage(),
     ProgressoPage(),
+    ConquistasPage(),
   ];
 
   @override
@@ -114,6 +116,11 @@ class _MainScreenState extends State<MainScreen> {
             icon: Icon(Icons.bar_chart_outlined),
             selectedIcon: Icon(Icons.bar_chart),
             label: 'Progresso',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.workspace_premium_outlined),
+            selectedIcon: Icon(Icons.workspace_premium),
+            label: 'Conquistas',
           ),
         ],
       ),
